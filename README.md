@@ -1,34 +1,39 @@
 # Green Corridor
 
-A hazard-aware routing system: A* search over a road graph where live,
-crowdsourced hazard reports (potholes, waterlogging, closures) dynamically
-increase or block edge costs. Any user requesting a route gets one that
-automatically bends around current conditions — no hardcoded rules, just
-cost-based graph search reacting to real data.
+A smart routing system that finds you the best path — and automatically
+avoids road problems as people report them. If someone reports a pothole
+or a flooded road nearby, your route updates on its own to avoid it. No
+manual rules written for each hazard — the system just recalculates the
+"cheapest" path every time road conditions change.
 
-## Two halves
+## Two parts
 
-1. **Router** — A* pathfinding over a graph of intersections/roads.
-2. **Heatmap** — a full-stack app where citizens report hazards in real time,
-   which feed directly into the router's cost graph.
+1. **Router** — figures out the best path between two points using an
+   algorithm called A* (A-star). It treats the city like a map of dots
+   (intersections) connected by lines (roads), each with a "cost" to
+   travel.
+2. **Heatmap** — a live map where people can report hazards (potholes,
+   waterlogging, road closures). These reports directly affect how
+   costly a road is, which is what makes the router avoid them.
 
-## Stack
+## Built with
 
-- Frontend: React + Leaflet.js
-- Backend: Node.js + Express
-- Real-time: Socket.IO
-- Database: MongoDB (geospatial queries)
-- Algorithm: A* in plain JavaScript, Haversine heuristic
+- **Frontend:** React + Leaflet.js — the map interface people see and interact with
+- **Backend:** Node.js + Express — handles requests like "give me a route" or "save this hazard report"
+- **Real-time updates:** Socket.IO — so new hazard reports show up instantly for everyone, without refreshing
+- **Database:** MongoDB — stores hazard reports, with support for location-based queries
+- **Algorithm:** A* search, written in plain JavaScript, using the Haversine formula (straight-line distance between two GPS points) to help it search efficiently
 
-## Status
+## Where this is at right now
 
-Phase 0 — environment setup only. No algorithm or app logic yet.
+Just getting started — setting up the project folders and environment.
+No actual routing or hazard logic yet.
 
-## Roadmap
+## What's coming, in order
 
-- [ ] Phase 1: A* in isolation (fake graph, no UI/server/DB)
-- [ ] Phase 2: Express + MongoDB backend (`POST /hazards`, `GET /hazards`)
-- [ ] Phase 3: Merge — DB hazards mutate the graph before A* runs
-- [ ] Phase 4: Real map (Leaflet, real lat/lng, Haversine heuristic)
-- [ ] Phase 5: Socket.IO live push + auto re-route on frontend
-- [ ] Phase 6: Polish (severity, hazard expiry, roles, Contraction Hierarchies stretch goal)
+- [ ] Step 1: Build the A* routing algorithm by itself, tested on a made-up mini map (no app around it yet)
+- [ ] Step 2: Build a basic backend that can save and list hazard reports
+- [ ] Step 3: Connect the two — hazard reports start actually changing the route
+- [ ] Step 4: Swap the made-up map for a real one, with real GPS locations
+- [ ] Step 5: Make hazard reports update everyone's map live, without refreshing
+- [ ] Step 6: Polish things up — hazard severity levels, reports expiring over time, different user roles, and (if there's time) a more advanced technique called Contraction Hierarchies to make searches faster
