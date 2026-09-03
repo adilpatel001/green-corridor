@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Green Corridor — Hazard Test Form (Phase 2)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; }
+    label { display: block; margin-top: 10px; }
+    input, select, textarea { width: 100%; padding: 6px; box-sizing: border-box; }
+    button { margin-top: 14px; padding: 8px 16px; }
+    li { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Report a Hazard (test form — not the real client)</h2>
+  <form id="hazardForm">
+    <label>Type
+      <select name="type">
+        <option value="pothole">Pothole</option>
+        <option value="waterlogging">Waterlogging</option>
+        <option value="blockage">Blockage</option>
+      </select>
+    </label>
+    <label>Severity
+      <select name="severity">
+        <option value="minor">Minor</option>
+        <option value="moderate" selected>Moderate</option>
+        <option value="blocked">Blocked</option>
+      </select>
+    </label>
+    <label>Longitude <input name="longitude" type="number" step="any" required /></label>
+    <label>Latitude <input name="latitude" type="number" step="any" required /></label>
+    <label>Description <textarea name="description"></textarea></label>
+    <button type="submit">Submit report</button>
+  </form>
+
+  <h3>Reported hazards</h3>
+  <ul id="hazardList"></ul>
+
+  <script>
+    const form = document.getElementById("hazardForm");
+    const list = document.getElementById("hazardList");
+
+    async function loadHazards() {
+      const res = await fetch("/hazards");
+      const hazards = await res.json();
+      list.innerHTML = hazards
+        .map(h => `<li>${h.type} (${h.severity}) at [${h.location.coordinates}] — ${h.description || "no description"}</li>`)
+        .join("");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form));
+      await fetch("/hazards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: data.type,
+          severity: data.severity,
+          description: data.description,
+          longitude: parseFloat(data.longitude),
+          latitude: parseFloat(data.latitude),
+        }),
+      });
+      form.reset();
+      loadHazards();
+    });
+
+    loadHazards();
+  </script>
+</body>
+</html>

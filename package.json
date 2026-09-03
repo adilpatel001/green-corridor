@@ -8,5 +8,11 @@
   "scripts": {
     "test": "echo \"Phase 1 tests not yet added\" && exit 0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.9.4"
+  }
 }
