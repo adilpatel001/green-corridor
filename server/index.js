@@ -6,6 +6,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB } from "./db.js";
 import { hazardsRouter } from "./routes/hazards.js";
+import { routeRouter } from "./routes/route.js";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use(express.static("server/public")); // serves the basic test form
 
 app.use("/hazards", hazardsRouter);
+app.use("/route", routeRouter);
 
 const PORT = process.env.PORT || 3000;
 

@@ -2,17 +2,19 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Green Corridor — Hazard Test Form (Phase 2)</title>
+  <title>Green Corridor — Phase 3 Test Page</title>
   <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; }
+    body { font-family: sans-serif; max-width: 520px; margin: 40px auto; }
     label { display: block; margin-top: 10px; }
     input, select, textarea { width: 100%; padding: 6px; box-sizing: border-box; }
     button { margin-top: 14px; padding: 8px 16px; }
     li { margin-bottom: 8px; }
+    pre { background: #f4f4f4; padding: 10px; overflow-x: auto; }
+    hr { margin: 30px 0; }
   </style>
 </head>
 <body>
-  <h2>Report a Hazard (test form — not the real client)</h2>
+  <h2>Report a Hazard</h2>
   <form id="hazardForm">
     <label>Type
       <select name="type">
@@ -28,8 +30,12 @@
         <option value="blocked">Blocked</option>
       </select>
     </label>
-    <label>Longitude <input name="longitude" type="number" step="any" required /></label>
-    <label>Latitude <input name="latitude" type="number" step="any" required /></label>
+    <label>From node
+      <select name="fromNode" id="fromNode"></select>
+    </label>
+    <label>To node
+      <select name="toNode" id="toNode"></select>
+    </label>
     <label>Description <textarea name="description"></textarea></label>
     <button type="submit">Submit report</button>
   </form>
@@ -37,34 +43,59 @@
   <h3>Reported hazards</h3>
   <ul id="hazardList"></ul>
 
+  <hr />
+
+  <h2>Test a route</h2>
+  <form id="routeForm">
+    <label>Start node <select name="start" id="startNode"></select></label>
+    <label>Goal node <select name="goal" id="goalNode"></select></label>
+    <button type="submit">Compute route</button>
+  </form>
+  <pre id="routeResult"></pre>
+
   <script>
-    const form = document.getElementById("hazardForm");
+    const NODES = ["A","B","C","D","E","F","G","H","I"];
+    for (const sel of [fromNode, toNode, startNode, goalNode]) {
+      sel.innerHTML = NODES.map(n => `<option value="${n}">${n}</option>`).join("");
+    }
+    goalNode.value = "I"; // matches the algorithm/graph.js sample layout
+
+    const hazardForm = document.getElementById("hazardForm");
     const list = document.getElementById("hazardList");
 
     async function loadHazards() {
       const res = await fetch("/hazards");
       const hazards = await res.json();
       list.innerHTML = hazards
-        .map(h => `<li>${h.type} (${h.severity}) at [${h.location.coordinates}] — ${h.description || "no description"}</li>`)
+        .map(h => `<li>${h.type} (${h.severity}): ${h.fromNode} → ${h.toNode} — ${h.description || "no description"}</li>`)
         .join("");
     }
 
-    form.addEventListener("submit", async (e) => {
+    hazardForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const data = Object.fromEntries(new FormData(form));
-      await fetch("/hazards", {
+      const data = Object.fromEntries(new FormData(hazardForm));
+      const res = await fetch("/hazards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: data.type,
-          severity: data.severity,
-          description: data.description,
-          longitude: parseFloat(data.longitude),
-          latitude: parseFloat(data.latitude),
-        }),
+        body: JSON.stringify(data),
       });
-      form.reset();
+      if (!res.ok) {
+        alert((await res.json()).error);
+        return;
+      }
+      hazardForm.reset();
+      goalNode.value = "I";
       loadHazards();
+    });
+
+    const routeForm = document.getElementById("routeForm");
+    const routeResult = document.getElementById("routeResult");
+
+    routeForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const { start, goal } = Object.fromEntries(new FormData(routeForm));
+      const res = await fetch(`/route?start=${start}&goal=${goal}`);
+      routeResult.textContent = JSON.stringify(await res.json(), null, 2);
     });
 
     loadHazards();
