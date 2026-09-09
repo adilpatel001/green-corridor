@@ -18,8 +18,8 @@ import { Hazard } from "../models/Hazard.js";
 import { graph } from "../../algorithm/graph.js";
 import { aStar } from "../../algorithm/aStar.js";
 import { applyHazards } from "../../algorithm/applyHazards.js";
-import { SEVERITY_MULTIPLIERS } from "../severityMap.js";
 import { haversine } from "../../algorithm/heuristics/haversine.js";
+import { SEVERITY_MULTIPLIERS } from "../severityMap.js";
 
 export const routeRouter = Router();
 
