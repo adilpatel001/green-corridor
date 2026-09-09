@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import { connectDB } from "./db.js";
 import { hazardsRouter } from "./routes/hazards.js";
 import { routeRouter } from "./routes/route.js";
+import { graphRouter } from "./routes/graph.js";
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use(express.static("server/public")); // serves the basic test form
 
 app.use("/hazards", hazardsRouter);
 app.use("/route", routeRouter);
+app.use("/graph", graphRouter);
 
 const PORT = process.env.PORT || 3000;
 

@@ -19,6 +19,7 @@ import { graph } from "../../algorithm/graph.js";
 import { aStar } from "../../algorithm/aStar.js";
 import { applyHazards } from "../../algorithm/applyHazards.js";
 import { SEVERITY_MULTIPLIERS } from "../severityMap.js";
+import { haversine } from "../../algorithm/heuristics/haversine.js";
 
 export const routeRouter = Router();
 
@@ -39,7 +40,7 @@ routeRouter.get("/", async (req, res) => {
     }));
 
     const hazardGraph = applyHazards(graph, hazardEdges);
-    const result = aStar(hazardGraph, start, goal);
+    const result = aStar(hazardGraph, start, goal, haversine);
 
     // JSON has no representation for Infinity — JSON.stringify silently
     // turns it into null, which would make a genuinely blocked route look

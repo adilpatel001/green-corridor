@@ -1,20 +1,27 @@
-// Phase 1: fake hardcoded graph.
-// Nodes = intersections. Each node has x/y coords (placeholder for real
-// lat/lng, which arrives in Phase 4) and an `edges` map of
-// neighborId -> baseCost (the cost of the road segment).
+// Phase 4: real lat/lng coordinates, replacing the fake x/y grid from
+// Phase 1. Same 9-node topology as before (A–I connect the same way) so
+// everything you already understand about the graph shape still applies —
+// only the coordinate system and edge costs changed.
 //
-// Roads are modeled as two-way: if A -> B exists, B -> A also exists.
-// This mirrors a real street grid where hazard reports usually affect
-// both directions of travel on a road.
+// Edge costs are now real distances in kilometers, computed as:
+//   straight-line (Haversine) distance x a curvature factor (>= 1)
+// The curvature factor represents that real roads bend — never assume a
+// road is exactly as short as the crow flies. This also means the edge
+// costs and the heuristic (Haversine) are now expressed in the same
+// units, which is required for the heuristic to mean anything.
+//
+// Coordinates are illustrative (Bhopal-area, laid out on the same grid
+// pattern as before) — this is still a placeholder graph, not real road
+// data. Real OpenStreetMap data is a later concern, not Phase 4.
 
 export const graph = {
-  A: { x: 0, y: 0, edges: { B: 4, D: 2 } },
-  B: { x: 1, y: 0, edges: { A: 4, C: 5, E: 10 } },
-  C: { x: 2, y: 0, edges: { B: 5, F: 3 } },
-  D: { x: 0, y: 1, edges: { A: 2, E: 3, G: 8 } },
-  E: { x: 1, y: 1, edges: { B: 10, D: 3, F: 4, H: 6 } },
-  F: { x: 2, y: 1, edges: { C: 3, E: 4, I: 5 } },
-  G: { x: 0, y: 2, edges: { D: 8, H: 3 } },
-  H: { x: 1, y: 2, edges: { E: 6, G: 3, I: 2 } },
-  I: { x: 2, y: 2, edges: { F: 5, H: 2 } },
+  A: { lat: 23.259900, lng: 77.412600, edges: { B: 0.3371, D: 0.3503 } },
+  B: { lat: 23.259900, lng: 77.415600, edges: { A: 0.3371, C: 0.3524, E: 0.5337 } },
+  C: { lat: 23.259900, lng: 77.418600, edges: { B: 0.3524, F: 0.3669 } },
+  D: { lat: 23.256900, lng: 77.412600, edges: { A: 0.3503, E: 0.3678, G: 0.4670 } },
+  E: { lat: 23.256900, lng: 77.415600, edges: { B: 0.5337, D: 0.3678, F: 0.3371, H: 0.5004 } },
+  F: { lat: 23.256900, lng: 77.418600, edges: { C: 0.3669, E: 0.3371, I: 0.3836 } },
+  G: { lat: 23.253900, lng: 77.412600, edges: { D: 0.4670, H: 0.3371 } },
+  H: { lat: 23.253900, lng: 77.415600, edges: { E: 0.5004, G: 0.3371, I: 0.3218 } },
+  I: { lat: 23.253900, lng: 77.418600, edges: { F: 0.3836, H: 0.3218 } },
 };

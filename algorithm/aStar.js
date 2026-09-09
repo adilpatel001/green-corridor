@@ -1,23 +1,18 @@
-// Phase 1: A* search, isolated from any UI/server/DB.
+// Phase 4 refactor: aStar no longer hardcodes a heuristic. It now takes
+// heuristicFn as a required parameter — dependency injection instead of a
+// fixed internal function.
 //
-// f(n) = g(n) + h(n)
-//   g(n) = actual cost from start to n (sum of edge costs so far)
-//   h(n) = estimated cost from n to goal (heuristic — must never
-//          overestimate the true cost, or the result stops being optimal)
-//
-// Heuristic here is straight-line (Euclidean) distance over the x/y grid
-// coords. This is a placeholder — it's admissible for a grid the same way
-// Haversine distance will be admissible for real lat/lng in Phase 4,
-// because both estimate physical distance, which is always <= actual
-// road-network distance.
+// Why this refactor, specifically now: Phase 1's heuristic was baked in
+// because there was only ever one option (Euclidean, over fake x/y). Now
+// that a second, real heuristic (Haversine) exists, hardcoding either one
+// would mean editing this file every time the graph's coordinate system
+// changes. Injecting the heuristic means aStar.js never needs to know
+// whether it's running on a fake grid or real GPS data — it only needs a
+// function with the shape (graph, nodeId, nodeId) => number. This also
+// sets up Phase 6's Contraction Hierarchies work cleanly: benchmarking
+// heuristics against each other becomes a one-line swap, not a rewrite.
 
-function heuristic(graph, a, b) {
-  const dx = graph[a].x - graph[b].x;
-  const dy = graph[a].y - graph[b].y;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-export function aStar(graph, startId, goalId) {
+export function aStar(graph, startId, goalId, heuristicFn) {
   if (!graph[startId] || !graph[goalId]) {
     return { path: null, cost: Infinity, nodesExplored: 0, reason: "INVALID_NODE" };
   }
@@ -25,13 +20,10 @@ export function aStar(graph, startId, goalId) {
   const openSet = new Set([startId]);
   const cameFrom = {};
   const gScore = { [startId]: 0 };
-  const fScore = { [startId]: heuristic(graph, startId, goalId) };
+  const fScore = { [startId]: heuristicFn(graph, startId, goalId) };
   let nodesExplored = 0;
 
   while (openSet.size > 0) {
-    // Pick the open-set node with lowest fScore. Linear scan is fine for
-    // graphs this small — see the README notes on swapping this for a
-    // binary min-heap once the graph is real-world sized.
     let current = null;
     let lowestF = Infinity;
     for (const node of openSet) {
@@ -55,20 +47,18 @@ export function aStar(graph, startId, goalId) {
 
     const neighbors = graph[current].edges || {};
     for (const [neighbor, cost] of Object.entries(neighbors)) {
-      if (cost === Infinity) continue; // hazard-blocked edge, skip entirely
+      if (cost === Infinity) continue;
 
       const tentativeG = gScore[current] + cost;
       if (tentativeG < (gScore[neighbor] ?? Infinity)) {
         cameFrom[neighbor] = current;
         gScore[neighbor] = tentativeG;
-        fScore[neighbor] = tentativeG + heuristic(graph, neighbor, goalId);
+        fScore[neighbor] = tentativeG + heuristicFn(graph, neighbor, goalId);
         openSet.add(neighbor);
       }
     }
   }
 
-  // openSet emptied out without ever reaching goalId — no path exists
-  // (either the graph is disconnected, or hazards blocked every route).
   return { path: null, cost: Infinity, nodesExplored, reason: "NO_PATH_FOUND" };
 }
 
