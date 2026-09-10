@@ -4,6 +4,11 @@
 // itself, which silently skips unknown edges — for the write path, a
 // hazard referencing a nonexistent road is a client error worth a 400,
 // not something to quietly swallow.
+//
+// Phase 5 update: after a successful save, broadcast the new hazard to
+// every connected client via Socket.IO. This is the one place hazards
+// enter the system, so it's the only place that needs to know about
+// live push at all — the rest of the app just reacts to the event.
 
 import { Router } from "express";
 import { Hazard } from "../models/Hazard.js";
@@ -20,6 +25,9 @@ hazardsRouter.post("/", async (req, res) => {
     }
 
     const hazard = await Hazard.create({ type, fromNode, toNode, severity, description });
+
+    req.app.get("io").emit("hazard:created", hazard);
+
     res.status(201).json(hazard);
   } catch (err) {
     if (err.name === "ValidationError") {

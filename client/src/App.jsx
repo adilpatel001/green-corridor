@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMapEvents } from "react-leaflet";
 import { findNearestEdge } from "./geo.js";
+import { socket } from "./socket.js";
 
 // A click more than this far from any road is treated as "not on a road"
 // rather than force-snapped to whatever's nearest — otherwise a click in
@@ -32,6 +33,7 @@ export default function App() {
   const [route, setRoute] = useState(null); // last successful /route response
   const [routeError, setRouteError] = useState(null);
   const [computing, setComputing] = useState(false);
+  const [autoUpdateNotice, setAutoUpdateNotice] = useState(null);
 
   const [hazards, setHazards] = useState([]);
   const [selected, setSelected] = useState(null); // { edge, distanceKm } from the last map click
@@ -39,6 +41,8 @@ export default function App() {
   const [hazardForm, setHazardForm] = useState({ type: "pothole", severity: "moderate", description: "" });
   const [submittingHazard, setSubmittingHazard] = useState(false);
   const [hazardSubmitError, setHazardSubmitError] = useState(null);
+
+  const [connected, setConnected] = useState(socket.connected);
 
   useEffect(() => {
     fetch("/graph")
@@ -59,6 +63,38 @@ export default function App() {
     loadHazards();
   }, []);
 
+  // Phase 5: connection status, purely cosmetic but useful for trusting
+  // that live updates are actually possible right now.
+  useEffect(() => {
+    function onConnect() { setConnected(true); }
+    function onDisconnect() { setConnected(false); }
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+    };
+  }, []);
+
+  // Phase 5: the actual milestone. Every connected client — including
+  // ones that didn't report the hazard themselves — refreshes its hazard
+  // overlay, and if this client currently has a computed route on screen,
+  // that route is silently recomputed against the new hazard data. No
+  // refresh, no re-clicking "Compute route".
+  //
+  // Re-registered whenever start/goal/route change so the listener always
+  // closes over current values instead of the ones from first render.
+  useEffect(() => {
+    function onHazardCreated() {
+      loadHazards();
+      if (route && start && goal) {
+        fetchRoute(start, goal, { silent: true });
+      }
+    }
+    socket.on("hazard:created", onHazardCreated);
+    return () => socket.off("hazard:created", onHazardCreated);
+  }, [start, goal, route]);
+
   function loadHazards() {
     fetch("/hazards")
       .then((res) => res.json())
@@ -66,22 +102,41 @@ export default function App() {
       .catch(() => {}); // hazards overlay is non-critical; fail quietly
   }
 
-  async function computeRoute(e) {
-    e.preventDefault();
-    setComputing(true);
-    setRouteError(null);
+  // Shared by both the manual "Compute route" button and the automatic
+  // re-route triggered by a live hazard event. `silent` skips the
+  // computing spinner and shows a brief "auto-updated" notice instead of
+  // treating it like a user-initiated action.
+  async function fetchRoute(startId, goalId, { silent = false } = {}) {
+    if (!silent) {
+      setComputing(true);
+      setRouteError(null);
+    }
     try {
-      const res = await fetch(`/route?start=${start}&goal=${goal}`);
+      const res = await fetch(`/route?start=${startId}&goal=${goalId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Server responded ${res.status}`);
       if (data.reason === "INVALID_NODE") throw new Error("Start or goal node doesn't exist.");
-      setRoute(data); // still set even if unreachable — the panel shows that state explicitly
+      setRoute(data);
+      if (silent) {
+        setAutoUpdateNotice("Route updated automatically — a nearby hazard changed.");
+        setTimeout(() => setAutoUpdateNotice(null), 4000);
+      }
     } catch (err) {
-      setRouteError(err.message);
-      setRoute(null);
+      if (!silent) {
+        setRouteError(err.message);
+        setRoute(null);
+      }
+      // A silent auto-recompute failing quietly is fine — the old route
+      // stays on screen rather than getting replaced by an error message
+      // the user didn't ask for.
     } finally {
-      setComputing(false);
+      if (!silent) setComputing(false);
     }
+  }
+
+  function computeRoute(e) {
+    e.preventDefault();
+    fetchRoute(start, goal);
   }
 
   function handleMapClick(latlng) {
@@ -179,6 +234,19 @@ export default function App() {
           width: 220,
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, fontSize: 12, color: "#555" }}>
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: connected ? "#2ecc71" : "#c0392b",
+              display: "inline-block",
+            }}
+          />
+          {connected ? "Live" : "Reconnecting…"}
+        </div>
+
         <form onSubmit={computeRoute}>
           <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
             Start
@@ -200,6 +268,12 @@ export default function App() {
             {computing ? "Computing…" : "Compute route"}
           </button>
         </form>
+
+        {autoUpdateNotice && (
+          <div style={{ color: "#1a7f37", fontSize: 12, marginTop: 10, fontStyle: "italic" }}>
+            {autoUpdateNotice}
+          </div>
+        )}
 
         {routeError && (
           <div style={{ color: "#c0392b", fontSize: 13, marginTop: 10 }}>{routeError}</div>
