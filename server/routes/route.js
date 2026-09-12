@@ -20,6 +20,7 @@ import { aStar } from "../../algorithm/aStar.js";
 import { applyHazards } from "../../algorithm/applyHazards.js";
 import { haversine } from "../../algorithm/heuristics/haversine.js";
 import { SEVERITY_MULTIPLIERS } from "../severityMap.js";
+import { activeHazardsFilter } from "../expiry.js";
 
 export const routeRouter = Router();
 
@@ -31,7 +32,11 @@ routeRouter.get("/", async (req, res) => {
       return res.status(400).json({ error: "start and goal query params are required" });
     }
 
-    const hazards = await Hazard.find();
+    // Phase 6: an expired hazard shouldn't influence routing at all — a
+    // pothole reported three weeks ago has almost certainly been fixed.
+    // Filtering happens at the query itself, not after fetching, so this
+    // route and GET /hazards can never disagree about what "active" means.
+    const hazards = await Hazard.find(activeHazardsFilter());
 
     const hazardEdges = hazards.map((h) => ({
       from: h.fromNode,

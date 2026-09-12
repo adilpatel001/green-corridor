@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, Popup, useMapEvents } from "react-leaflet";
 import { findNearestEdge } from "./geo.js";
 import { socket } from "./socket.js";
 
@@ -44,6 +44,13 @@ export default function App() {
 
   const [connected, setConnected] = useState(socket.connected);
 
+  // Phase 6: role-based views. See server/middleware/requireRole.js for
+  // the important caveat — this is a client-asserted role, not real
+  // authentication. Citizen is the default; nothing about reporting a
+  // hazard requires switching roles at all.
+  const [role, setRole] = useState("citizen");
+  const [resolvingId, setResolvingId] = useState(null);
+
   useEffect(() => {
     fetch("/graph")
       .then((res) => {
@@ -60,8 +67,14 @@ export default function App() {
         }
       })
       .catch((err) => setError(err.message));
-    loadHazards();
   }, []);
+
+  // Loads whichever hazard view matches the current role — re-runs
+  // whenever the role toggles, so switching to Authority immediately
+  // pulls in the historical/resolved hazards without a manual refresh.
+  useEffect(() => {
+    loadHazards();
+  }, [role]);
 
   // Phase 5: connection status, purely cosmetic but useful for trusting
   // that live updates are actually possible right now.
@@ -76,30 +89,55 @@ export default function App() {
     };
   }, []);
 
-  // Phase 5: the actual milestone. Every connected client — including
-  // ones that didn't report the hazard themselves — refreshes its hazard
-  // overlay, and if this client currently has a computed route on screen,
-  // that route is silently recomputed against the new hazard data. No
-  // refresh, no re-clicking "Compute route".
+  // Phase 5/6: the actual live-update milestone, now covering both
+  // creation and Authority-resolution through the same mechanism. Every
+  // connected client refreshes its hazard overlay, and if this client
+  // currently has a computed route on screen, that route is silently
+  // recomputed against the new hazard data.
   //
-  // Re-registered whenever start/goal/route change so the listener always
-  // closes over current values instead of the ones from first render.
+  // Re-registered whenever start/goal/route/role change so the listener
+  // always closes over current values instead of stale ones from an
+  // earlier render.
   useEffect(() => {
-    function onHazardCreated() {
+    function onHazardChange() {
       loadHazards();
       if (route && start && goal) {
         fetchRoute(start, goal, { silent: true });
       }
     }
-    socket.on("hazard:created", onHazardCreated);
-    return () => socket.off("hazard:created", onHazardCreated);
-  }, [start, goal, route]);
+    socket.on("hazard:created", onHazardChange);
+    socket.on("hazard:resolved", onHazardChange);
+    return () => {
+      socket.off("hazard:created", onHazardChange);
+      socket.off("hazard:resolved", onHazardChange);
+    };
+  }, [start, goal, route, role]);
 
   function loadHazards() {
-    fetch("/hazards")
+    const url = role === "authority" ? "/hazards?all=true" : "/hazards";
+    const headers = role === "authority" ? { "x-role": "authority" } : {};
+    fetch(url, { headers })
       .then((res) => res.json())
       .then(setHazards)
       .catch(() => {}); // hazards overlay is non-critical; fail quietly
+  }
+
+  async function resolveHazard(hazardId) {
+    setResolvingId(hazardId);
+    try {
+      const res = await fetch(`/hazards/${hazardId}/resolve`, {
+        method: "PATCH",
+        headers: { "x-role": "authority" },
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      loadHazards(); // the socket broadcast will also trigger this, but
+      // updating immediately here avoids waiting on a round trip for the
+      // user who just clicked the button themselves.
+    } catch (err) {
+      alert(`Couldn't resolve hazard: ${err.message}`);
+    } finally {
+      setResolvingId(null);
+    }
   }
 
   // Shared by both the manual "Compute route" button and the automatic
@@ -246,6 +284,14 @@ export default function App() {
           />
           {connected ? "Live" : "Reconnecting…"}
         </div>
+
+        <label style={{ display: "block", fontSize: 12, marginBottom: 10, color: "#555" }}>
+          View as
+          <select value={role} onChange={(e) => setRole(e.target.value)} style={{ width: "100%" }}>
+            <option value="citizen">Citizen</option>
+            <option value="authority">Authority</option>
+          </select>
+        </label>
 
         <form onSubmit={computeRoute}>
           <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
@@ -401,22 +447,45 @@ export default function App() {
           );
         })}
 
-        {/* Existing hazards, colored by severity, drawn on top of base roads */}
+        {/* Hazards, colored by severity. In Authority view this list also
+            includes expired/resolved hazards (fetched via ?all=true),
+            rendered thin and grey so the currently-active ones still
+            stand out clearly. */}
         {hazards.map((h) => {
           const from = nodeById[h.fromNode];
           const to = nodeById[h.toNode];
           if (!from || !to) return null;
+
+          const isActive = new Date(h.expiresAt) > new Date();
+
           return (
             <Polyline
               key={h._id}
               positions={[[from.lat, from.lng], [to.lat, to.lng]]}
-              pathOptions={{
-                color: SEVERITY_COLORS[h.severity] || "#888",
-                weight: 5,
-                dashArray: "6 6",
-              }}
+              pathOptions={
+                isActive
+                  ? { color: SEVERITY_COLORS[h.severity] || "#888", weight: 5, dashArray: "6 6" }
+                  : { color: "#aaaaaa", weight: 2, dashArray: "2 6" }
+              }
             >
-              <Tooltip>{h.type} ({h.severity}){h.description ? `: ${h.description}` : ""}</Tooltip>
+              <Popup>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{h.type}</strong> ({h.severity})
+                  {h.description && <div>{h.description}</div>}
+                  <div style={{ color: "#777", marginTop: 4 }}>
+                    {isActive ? "Active" : h.resolved ? "Resolved early" : "Expired"}
+                  </div>
+                  {role === "authority" && isActive && (
+                    <button
+                      onClick={() => resolveHazard(h._id)}
+                      disabled={resolvingId === h._id}
+                      style={{ marginTop: 6, width: "100%" }}
+                    >
+                      {resolvingId === h._id ? "Resolving…" : "Resolve now"}
+                    </button>
+                  )}
+                </div>
+              </Popup>
             </Polyline>
           );
         })}

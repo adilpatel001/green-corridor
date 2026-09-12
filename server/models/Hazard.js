@@ -39,6 +39,22 @@ const hazardSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  // Phase 6: when this hazard stops affecting routing/display. Computed
+  // at report time (server/expiry.js) rather than left to a default here,
+  // since the correct duration depends on `type` — a field default can't
+  // see another field's value.
+  expiresAt: {
+    type: Date,
+    required: true,
+  },
+  // Phase 6: distinguishes a hazard that expired naturally (time ran out)
+  // from one an Authority-role user marked resolved early. Both stop
+  // affecting routing the same way (expiresAt <= now), but this field
+  // preserves *why*, which matters for an honest audit history.
+  resolved: {
+    type: Boolean,
+    default: false,
+  },
   location: {
     type: {
       type: String,
