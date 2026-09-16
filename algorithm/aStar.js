@@ -11,28 +11,38 @@
 // function with the shape (graph, nodeId, nodeId) => number. This also
 // sets up Phase 6's Contraction Hierarchies work cleanly: benchmarking
 // heuristics against each other becomes a one-line swap, not a rewrite.
+//
+// Open-set upgrade: this used to pick the lowest-fScore node with a
+// linear scan — O(V) per extraction, explicitly flagged since Phase 1 as
+// "fine for a 9-node graph, revisit at real-world scale." Now that a real
+// 200+ node graph exists (and will keep growing), it's a binary min-heap
+// instead — see minHeap.js for why it uses a "closed set" pattern rather
+// than a true decrease-key.
+
+import { MinHeap } from "./minHeap.js";
 
 export function aStar(graph, startId, goalId, heuristicFn) {
   if (!graph[startId] || !graph[goalId]) {
     return { path: null, cost: Infinity, nodesExplored: 0, reason: "INVALID_NODE" };
   }
 
-  const openSet = new Set([startId]);
+  const openHeap = new MinHeap();
   const cameFrom = {};
   const gScore = { [startId]: 0 };
-  const fScore = { [startId]: heuristicFn(graph, startId, goalId) };
+  const closed = new Set();
   let nodesExplored = 0;
 
-  while (openSet.size > 0) {
-    let current = null;
-    let lowestF = Infinity;
-    for (const node of openSet) {
-      const f = fScore[node] ?? Infinity;
-      if (f < lowestF) {
-        lowestF = f;
-        current = node;
-      }
-    }
+  openHeap.push(heuristicFn(graph, startId, goalId), startId);
+
+  while (openHeap.size > 0) {
+    const [, current] = openHeap.pop();
+
+    // The heap can hold multiple, increasingly-better entries for the
+    // same node (pushed whenever gScore improved) rather than updating
+    // one in place. Once a node is finalized via the closed set, any
+    // later, worse entries for it are stale — just skip them.
+    if (closed.has(current)) continue;
+    closed.add(current);
 
     if (current === goalId) {
       return {
@@ -42,19 +52,19 @@ export function aStar(graph, startId, goalId, heuristicFn) {
       };
     }
 
-    openSet.delete(current);
     nodesExplored++;
 
     const neighbors = graph[current].edges || {};
     for (const [neighbor, cost] of Object.entries(neighbors)) {
       if (cost === Infinity) continue;
+      if (closed.has(neighbor)) continue;
 
       const tentativeG = gScore[current] + cost;
       if (tentativeG < (gScore[neighbor] ?? Infinity)) {
         cameFrom[neighbor] = current;
         gScore[neighbor] = tentativeG;
-        fScore[neighbor] = tentativeG + heuristicFn(graph, neighbor, goalId);
-        openSet.add(neighbor);
+        const f = tentativeG + heuristicFn(graph, neighbor, goalId);
+        openHeap.push(f, neighbor);
       }
     }
   }
