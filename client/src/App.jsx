@@ -431,21 +431,12 @@ export default function App() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {graph.edges.map((edge) => {
-          const from = nodeById[edge.from];
-          const to = nodeById[edge.to];
-          if (!from || !to) return null; // defensive — skip if a node id doesn't resolve
-          return (
-            <Polyline
-              key={`${edge.from}-${edge.to}`}
-              positions={[
-                [from.lat, from.lng],
-                [to.lat, to.lng],
-              ]}
-              pathOptions={{ color: "#3388ff", weight: 4 }}
-            />
-          );
-        })}
+        {/* Base roads are no longer drawn individually — at real-world
+            scale (hundreds of nodes/edges) that just duplicates what the
+            OpenStreetMap tiles already show, and cluttered the map with
+            a permanently-labeled marker on every intersection. Only
+            computed/reported things get drawn now: the route, hazards,
+            and the currently selected Start/Goal. */}
 
         {/* Hazards, colored by severity. In Authority view this list also
             includes expired/resolved hazards (fetched via ?all=true),
@@ -500,18 +491,28 @@ export default function App() {
           <Polyline positions={selectedCoords} pathOptions={{ color: "#1a1a1a", weight: 8, opacity: 0.4 }} />
         )}
 
-        {graph.nodes.map((node) => (
+        {/* Small markers for just the currently selected Start/Goal —
+            visual confirmation of what's picked, without drawing all
+            214 nodes. Distinct colors so they're not confused with a
+            hazard or the route itself. */}
+        {nodeById[start] && (
           <CircleMarker
-            key={node.id}
-            center={[node.lat, node.lng]}
-            radius={8}
-            pathOptions={{ color: "#1a1a1a", fillColor: "#ffffff", fillOpacity: 1, weight: 2 }}
+            center={[nodeById[start].lat, nodeById[start].lng]}
+            radius={9}
+            pathOptions={{ color: "#1a1a1a", fillColor: "#2ecc71", fillOpacity: 1, weight: 2 }}
           >
-            <Tooltip permanent direction="top" offset={[0, -10]}>
-              {node.id}
-            </Tooltip>
+            <Tooltip permanent direction="top" offset={[0, -10]}>Start</Tooltip>
           </CircleMarker>
-        ))}
+        )}
+        {nodeById[goal] && (
+          <CircleMarker
+            center={[nodeById[goal].lat, nodeById[goal].lng]}
+            radius={9}
+            pathOptions={{ color: "#1a1a1a", fillColor: "#e63946", fillOpacity: 1, weight: 2 }}
+          >
+            <Tooltip permanent direction="top" offset={[0, -10]}>Goal</Tooltip>
+          </CircleMarker>
+        )}
       </MapContainer>
     </div>
   );
