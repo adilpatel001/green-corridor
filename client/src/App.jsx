@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, Popup, useMapEvents } from "react-leaflet";
-import { findNearestEdge } from "./geo.js";
+import { findNearestEdge, findNearestNode } from "./geo.js";
 import { socket } from "./socket.js";
 
 // A click more than this far from any road is treated as "not on a road"
 // rather than force-snapped to whatever's nearest — otherwise a click in
 // the middle of nowhere would silently attach itself to a distant edge.
 const MAX_SNAP_DISTANCE_KM = 0.08; // 80m
+// Nodes are real intersections, typically further apart than a click is
+// likely to land exactly on one — a slightly larger threshold than the
+// hazard edge-snap distance.
+const MAX_NODE_PICK_DISTANCE_KM = 0.15; // 150m
 
 const SEVERITY_COLORS = { minor: "#f4d35e", moderate: "#f77f00", blocked: "#6a0dad" };
 
@@ -30,6 +34,10 @@ export default function App() {
 
   const [start, setStart] = useState("");
   const [goal, setGoal] = useState("");
+  // Phase 6 UX: which field the next map click should set, if any.
+  // null means clicks go to hazard reporting as normal.
+  const [pickMode, setPickMode] = useState(null); // null | "start" | "goal"
+  const [pickMessage, setPickMessage] = useState(null);
   const [route, setRoute] = useState(null); // last successful /route response
   const [routeError, setRouteError] = useState(null);
   const [computing, setComputing] = useState(false);
@@ -179,6 +187,23 @@ export default function App() {
 
   function handleMapClick(latlng) {
     if (!graph) return;
+
+    // If the user just clicked "Pick Start"/"Pick Goal", this click sets
+    // that field instead of going through the hazard-report flow. Takes
+    // priority and returns early — a click can't mean both things at once.
+    if (pickMode) {
+      const result = findNearestNode(latlng, graph.nodes);
+      if (!result || result.distanceKm > MAX_NODE_PICK_DISTANCE_KM) {
+        setPickMessage("No intersection nearby — click closer to a road junction.");
+        return; // stay in pick mode so the user can just try again
+      }
+      if (pickMode === "start") setStart(result.nodeId);
+      else setGoal(result.nodeId);
+      setPickMode(null);
+      setPickMessage(null);
+      return;
+    }
+
     const nodeById = Object.fromEntries(graph.nodes.map((n) => [n.id, n]));
     const result = findNearestEdge(latlng, graph.edges, nodeById);
 
@@ -294,22 +319,40 @@ export default function App() {
         </label>
 
         <form onSubmit={computeRoute}>
-          <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
-            Start
-            <select value={start} onChange={(e) => setStart(e.target.value)} style={{ width: "100%" }}>
-              {graph.nodes.map((n) => (
-                <option key={n.id} value={n.id}>{n.id}</option>
-              ))}
-            </select>
-          </label>
-          <label style={{ display: "block", fontSize: 13, margin: "8px 0 4px" }}>
-            Goal
-            <select value={goal} onChange={(e) => setGoal(e.target.value)} style={{ width: "100%" }}>
-              {graph.nodes.map((n) => (
-                <option key={n.id} value={n.id}>{n.id}</option>
-              ))}
-            </select>
-          </label>
+          <div style={{ fontSize: 13, marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>
+                <span style={{ color: "#2ecc71" }}>●</span> Start
+              </span>
+              <button
+                type="button"
+                onClick={() => { setPickMode(pickMode === "start" ? null : "start"); setPickMessage(null); }}
+                style={{ fontSize: 12, padding: "2px 8px" }}
+              >
+                {pickMode === "start" ? "Click the map…" : "Pick on map"}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 13, margin: "8px 0 4px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>
+                <span style={{ color: "#e63946" }}>●</span> Goal
+              </span>
+              <button
+                type="button"
+                onClick={() => { setPickMode(pickMode === "goal" ? null : "goal"); setPickMessage(null); }}
+                style={{ fontSize: 12, padding: "2px 8px" }}
+              >
+                {pickMode === "goal" ? "Click the map…" : "Pick on map"}
+              </button>
+            </div>
+          </div>
+
+          {pickMessage && (
+            <div style={{ color: "#c0392b", fontSize: 12, marginTop: 4 }}>{pickMessage}</div>
+          )}
+
           <button type="submit" disabled={computing} style={{ marginTop: 10, width: "100%" }}>
             {computing ? "Computing…" : "Compute route"}
           </button>
@@ -424,7 +467,11 @@ export default function App() {
         )}
       </div>
 
-      <MapContainer center={center} zoom={17} style={{ height: "100%", width: "100%" }}>
+      <MapContainer
+        center={center}
+        zoom={17}
+        style={{ height: "100%", width: "100%", cursor: pickMode ? "crosshair" : "" }}
+      >
         <ClickListener onMapClick={handleMapClick} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

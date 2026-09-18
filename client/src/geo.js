@@ -69,3 +69,29 @@ export function findNearestEdge(clickLatLng, edges, nodeById) {
 
   return nearestEdge ? { edge: nearestEdge, distanceKm: minDistance } : null;
 }
+
+// Same idea as findNearestEdge, but for picking a single node directly —
+// used for Start/Goal selection by clicking the nearest real intersection
+// instead of choosing one from a dropdown of raw graph ids.
+// nodes: [{ id, lat, lng }]. Returns { nodeId, distanceKm } or null.
+export function findNearestNode(clickLatLng, nodes) {
+  const refLat = clickLatLng.lat;
+  const clickLocal = toLocalKm(clickLatLng.lat, clickLatLng.lng, refLat);
+
+  let nearestId = null;
+  let minDistance = Infinity;
+
+  for (const node of nodes) {
+    const local = toLocalKm(node.lat, node.lng, refLat);
+    const dx = clickLocal.x - local.x;
+    const dy = clickLocal.y - local.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestId = node.id;
+    }
+  }
+
+  return nearestId ? { nodeId: nearestId, distanceKm: minDistance } : null;
+}
