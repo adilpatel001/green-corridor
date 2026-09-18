@@ -55,9 +55,15 @@ check(
 check("two-way road: 6->4 also exists", graph["6"]?.edges?.["4"] !== undefined);
 
 // 7. Connectivity check should correctly flag the disconnected 99/100 island.
-check("connectivity check found 2 components", stats.componentCount === 2);
+check("connectivity check found 3 strongly connected components", stats.componentCount === 3);
 check("disconnected node 99 still present in graph", graph["99"] !== undefined);
-check("warning mentions disconnected components", stats.warnings.some(w => w.includes("disconnected")));
+check("warning mentions strongly connected components", stats.warnings.some(w => w.includes("strongly connected")));
+
+// This is the real proof the SCC fix works: node 5 is only reachable via
+// a oneway edge (4->5) and has no way back, so it must be its OWN
+// isolated component — not lumped in with the main {1,4,6} cluster the
+// way the old naive flood-fill incorrectly did.
+check("the oneway dead-end (node 5) is its own isolated component, not merged with the main cluster", stats.largestComponentSize === 3);
 
 console.log(`\n${allPass ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED"}`);
 

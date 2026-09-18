@@ -1,44 +1,29 @@
 // Takes an already-generated graph.real.js and strips it down to just
-// its largest connected component. Real OSM extracts from a small
-// bounding box very commonly fragment — service lanes and dead ends get
-// cut off exactly at the box edge — and routing between two different
-// components would silently return NO_PATH_FOUND forever, which is worse
-// than just not having those extra nodes at all.
+// its largest STRONGLY connected component. Real OSM extracts from a
+// small bounding box very commonly fragment — service lanes and dead
+// ends get cut off exactly at the box edge — and routing between two
+// different components would silently return NO_PATH_FOUND forever,
+// which is worse than just not having those extra nodes at all.
+//
+// Uses proper strongly-connected-component logic (scc.js, Kosaraju's
+// algorithm) rather than a simple "follow outgoing edges" flood-fill.
+// That distinction matters the moment oneway streets are in the graph:
+// a flood-fill can call two nodes "connected" when only one of them can
+// actually reach the other. SCC only groups nodes that can genuinely
+// round-trip to each other — see scc.js's comments and scc.test.js for
+// the exact case this fixes.
 //
 // Usage: node scripts/osm/extractLargestComponent.mjs
 
 import { readFileSync, writeFileSync } from "fs";
 import { pathToFileURL } from "url";
 import { resolve } from "path";
-
-function findComponents(graph) {
-  const visited = new Set();
-  const components = []; // array of Set<nodeId>
-
-  for (const start of Object.keys(graph)) {
-    if (visited.has(start)) continue;
-    const component = new Set();
-    const stack = [start];
-    visited.add(start);
-    while (stack.length > 0) {
-      const node = stack.pop();
-      component.add(node);
-      for (const neighbor of Object.keys(graph[node].edges)) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor);
-          stack.push(neighbor);
-        }
-      }
-    }
-    components.push(component);
-  }
-
-  return components;
-}
+import { findStronglyConnectedComponents } from "./scc.js";
 
 export function extractLargestComponent(graph) {
-  const components = findComponents(graph);
-  const largest = components.reduce((a, b) => (b.size > a.size ? b : a));
+  const components = findStronglyConnectedComponents(graph);
+  const largestArray = components.reduce((a, b) => (b.length > a.length ? b : a));
+  const largest = new Set(largestArray);
 
   const filtered = {};
   for (const nodeId of largest) {
@@ -61,34 +46,38 @@ export function extractLargestComponent(graph) {
 // imported by the test file) ---
 // pathToFileURL correctly handles Windows paths (backslashes, drive
 // letters like C:\...) that a plain `file://${path}` string concatenation
-// gets wrong — that mismatch was why this silently did nothing before.
+// gets wrong.
 if (import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const inputPath = "algorithm/graph.real.js";
   console.log(`Reading ${inputPath}...`);
 
   const source = readFileSync(inputPath, "utf-8");
-  // The file is `export const graph = {...};` — extract just the object
-  // literal and eval it directly rather than doing a real import, so this
-  // script works the same whether run standalone or from any directory.
   const match = source.match(/export const graph = (\{[\s\S]*\});?\s*$/);
   if (!match) throw new Error(`Couldn't find "export const graph = {...}" in ${inputPath}`);
   const graph = eval(`(${match[1]})`);
 
   const before = { nodes: Object.keys(graph).length };
   const { graph: filtered, droppedComponents, droppedNodes } = extractLargestComponent(graph);
-  const after = { nodes: Object.keys(filtered).length, edges: Object.values(filtered).reduce((s, n) => s + Object.keys(n.edges).length, 0) };
+  const after = {
+    nodes: Object.keys(filtered).length,
+    edges: Object.values(filtered).reduce((s, n) => s + Object.keys(n.edges).length, 0),
+  };
 
   console.log(`Before: ${before.nodes} nodes`);
   console.log(`After:  ${after.nodes} nodes, ${after.edges} edges`);
-  console.log(`Dropped ${droppedNodes} nodes across ${droppedComponents} smaller components.`);
+  console.log(`Dropped ${droppedNodes} nodes across ${droppedComponents} smaller strongly-connected components.`);
 
-  // Sanity-check the result really is a single component before writing it.
-  const resultComponents = findComponents(filtered);
-  console.log(`Resulting components: ${resultComponents.length} (should be 1)`);
+  // Sanity-check the result really is a single strongly connected
+  // component before writing it — i.e., every remaining node can
+  // genuinely reach every other remaining node AND get back.
+  const resultComponents = findStronglyConnectedComponents(filtered);
+  console.log(`Resulting strongly connected components: ${resultComponents.length} (should be 1)`);
 
   const outputPath = "algorithm/graph.js";
   const fileContents = `// Generated by scripts/osm/extractLargestComponent.mjs
-// Source: algorithm/graph.real.js, filtered to its largest connected component
+// Source: algorithm/graph.real.js, filtered to its largest STRONGLY
+// connected component (guarantees any-pair round-trip routing, not just
+// one-way reachability)
 // Generated: ${new Date().toISOString()}
 // Nodes: ${after.nodes}, Edges: ${after.edges}
 

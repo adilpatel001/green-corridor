@@ -17,6 +17,8 @@
 // reflected in the edge cost, even though it's not reflected in the
 // graph's structure.
 
+import { findStronglyConnectedComponents } from "./scc.js";
+
 const EARTH_RADIUS_KM = 6371;
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -151,38 +153,29 @@ export function parseOsmToGraph(overpassJson) {
 // the rest. This isn't something the toy 9-node graph ever needed to
 // check (it was hand-built to be fully connected by construction), but
 // it's a real concern the moment the data comes from the outside world.
+//
+// Uses real strongly-connected-component logic (scc.js), not a simple
+// "follow outgoing edges" flood-fill — the naive version can call two
+// nodes "connected" even when only one of them can reach the other,
+// which is a real issue the moment oneway streets are in the data (see
+// scc.js and scc.test.js for the exact case this matters for). The
+// "components" this reports are groups where every node can genuinely
+// round-trip to every other node in the group.
 function checkConnectivity(graph, warnings) {
   const nodeIds = Object.keys(graph);
   if (nodeIds.length === 0) {
     return { nodeCount: 0, edgeCount: 0, componentCount: 0, largestComponentSize: 0, warnings };
   }
 
-  const visited = new Set();
-  const componentSizes = [];
-
-  for (const start of nodeIds) {
-    if (visited.has(start)) continue;
-    let size = 0;
-    const stack = [start];
-    visited.add(start);
-    while (stack.length > 0) {
-      const node = stack.pop();
-      size++;
-      for (const neighbor of Object.keys(graph[node].edges)) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor);
-          stack.push(neighbor);
-        }
-      }
-    }
-    componentSizes.push(size);
-  }
-
+  const components = findStronglyConnectedComponents(graph);
+  const componentSizes = components.map((c) => c.length);
   const largestComponentSize = Math.max(...componentSizes);
-  if (componentSizes.length > 1) {
+
+  if (components.length > 1) {
     warnings.push(
-      `Graph has ${componentSizes.length} disconnected components (largest: ${largestComponentSize} nodes). ` +
-      `Routing will fail between nodes in different components — consider widening the bounding box.`
+      `Graph has ${components.length} strongly connected components (largest: ${largestComponentSize} nodes). ` +
+      `Routing is only guaranteed between nodes in the same component — run extractLargestComponent.mjs, ` +
+      `or widen the bounding box.`
     );
   }
 
@@ -191,7 +184,7 @@ function checkConnectivity(graph, warnings) {
   return {
     nodeCount: nodeIds.length,
     edgeCount,
-    componentCount: componentSizes.length,
+    componentCount: components.length,
     largestComponentSize,
     warnings,
   };
